@@ -1,5 +1,6 @@
 use axum::{
     Json, Router,
+    extract::DefaultBodyLimit,
     extract::Multipart,
     http::{HeaderValue, StatusCode, header},
     response::{Html, IntoResponse, Response},
@@ -7,7 +8,15 @@ use axum::{
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::{net::SocketAddr, path::Path};
+use std::{
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    process::Stdio,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
+use tokio::{process::Command, time::timeout};
+
+const MAX_UPLOAD_BYTES: usize = 50 * 1024 * 1024;
 
 #[derive(Serialize)]
 struct RuntimeResponse {
@@ -31,6 +40,7 @@ struct ConvertResponse {
     format: Option<String>,
     mode: String,
     ocr: String,
+    ocr_applied: bool,
     size_bytes: usize,
     markdown: String,
     rag: Option<RagPayload>,
@@ -117,7 +127,8 @@ async fn main() {
         .route("/styles.css", get(styles))
         .route("/app.js", get(app_js))
         .route("/api/runtime", get(runtime))
-        .route("/api/convert", post(convert));
+        .route("/api/convert", post(convert))
+        .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES + 1024 * 1024));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
@@ -210,6 +221,17 @@ async fn convert(mut multipart: Multipart) -> Result<Json<ConvertResponse>, ApiE
     if input.bytes.is_empty() {
         return Err(ApiError::bad_request("file is required"));
     }
+    if input.bytes.len() > MAX_UPLOAD_BYTES {
+        return Err(ApiError::payload_too_large("file must not exceed 50 MB"));
+    }
+    if !matches!(input.mode.as_str(), "rag" | "markdown") {
+        return Err(ApiError::bad_request("mode must be rag or markdown"));
+    }
+    if !matches!(input.ocr.as_str(), "reject" | "local" | "paddleocr") {
+        return Err(ApiError::bad_request(
+            "ocr must be reject, local, or paddleocr",
+        ));
+    }
     if input.max_chars < 200 {
         return Err(ApiError::bad_request("max_chars must be at least 200"));
     }
@@ -222,7 +244,14 @@ async fn convert(mut multipart: Multipart) -> Result<Json<ConvertResponse>, ApiE
     let format = anydoc::Format::from_bytes(&input.bytes)
         .or_else(|| anydoc::Format::from_path(Path::new(&input.file_name)));
 
-    let markdown = anydoc::to_markdown_bytes(&input.bytes, format).map_err(ApiError::convert)?;
+    let (markdown, ocr_applied) = match anydoc::to_markdown_bytes(&input.bytes, format) {
+        Ok(markdown) => (markdown, false),
+        Err(anydoc::ConvertError::NeedsOcr { .. }) if input.ocr != "reject" => {
+            let markdown = run_ocr_command(&input.bytes, &input.file_name, &input.ocr).await?;
+            (markdown, true)
+        }
+        Err(error) => return Err(ApiError::convert(error)),
+    };
     if markdown.trim().is_empty() {
         return Err(ApiError::unprocessable(
             "noExtractableText",
@@ -250,10 +279,134 @@ async fn convert(mut multipart: Multipart) -> Result<Json<ConvertResponse>, ApiE
         format: format.map(format_name),
         mode: input.mode,
         ocr: input.ocr,
+        ocr_applied,
         size_bytes: input.bytes.len(),
         markdown,
         rag,
     }))
+}
+
+async fn run_ocr_command(
+    bytes: &[u8],
+    file_name: &str,
+    strategy: &str,
+) -> Result<String, ApiError> {
+    let env_name = match strategy {
+        "local" => "ANYDOC_OCR_COMMAND",
+        "paddleocr" => "ANYDOC_PADDLEOCR_COMMAND",
+        _ => return Err(ApiError::bad_request("unsupported OCR strategy")),
+    };
+    let command_template = std::env::var(env_name).map_err(|_| {
+        ApiError::unprocessable("ocrUnavailable", format!("{env_name} is not configured"))
+    })?;
+    let timeout_seconds = std::env::var("ANYDOC_OCR_TIMEOUT")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(120);
+    execute_ocr_command(bytes, file_name, &command_template, timeout_seconds).await
+}
+
+async fn execute_ocr_command(
+    bytes: &[u8],
+    file_name: &str,
+    command_template: &str,
+    timeout_seconds: u64,
+) -> Result<String, ApiError> {
+    let parts = shell_words::split(&command_template).map_err(|error| {
+        ApiError::unprocessable("ocrFailed", format!("invalid OCR command: {error}"))
+    })?;
+    if parts.is_empty() || !parts.iter().any(|part| part.contains("{input}")) {
+        return Err(ApiError::unprocessable(
+            "ocrFailed",
+            "OCR command must contain an {input} placeholder",
+        ));
+    }
+
+    let temp_dir = TempWorkDir::create()?;
+    let extension = Path::new(file_name)
+        .extension()
+        .and_then(|value| value.to_str())
+        .filter(|value| {
+            value
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric())
+        })
+        .unwrap_or("bin");
+    let input_path = temp_dir.path.join(format!("input.{extension}"));
+    let output_path = temp_dir.path.join("output.md");
+    std::fs::write(&input_path, bytes)
+        .map_err(|error| ApiError::ocr_failed(format!("cannot write temp input: {error}")))?;
+
+    let input_value = input_path.to_string_lossy();
+    let output_value = output_path.to_string_lossy();
+    let expanded: Vec<String> = parts
+        .into_iter()
+        .map(|part| {
+            part.replace("{input}", &input_value)
+                .replace("{output}", &output_value)
+        })
+        .collect();
+    let mut command = Command::new(&expanded[0]);
+    command
+        .args(&expanded[1..])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+
+    let output = timeout(Duration::from_secs(timeout_seconds), command.output())
+        .await
+        .map_err(|_| {
+            ApiError::ocr_failed(format!("OCR command timed out after {timeout_seconds}s"))
+        })?
+        .map_err(|error| ApiError::ocr_failed(format!("cannot start OCR command: {error}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let message: String = stderr.chars().take(500).collect();
+        return Err(ApiError::ocr_failed(if message.trim().is_empty() {
+            format!("OCR command exited with {}", output.status)
+        } else {
+            format!("OCR command failed: {}", message.trim())
+        }));
+    }
+
+    let markdown = if output_path.is_file() {
+        std::fs::read_to_string(&output_path)
+            .map_err(|error| ApiError::ocr_failed(format!("cannot read OCR output: {error}")))?
+    } else {
+        String::from_utf8(output.stdout)
+            .map_err(|_| ApiError::ocr_failed("OCR stdout is not valid UTF-8"))?
+    };
+    if markdown.trim().is_empty() {
+        return Err(ApiError::ocr_failed("OCR command returned empty Markdown"));
+    }
+    Ok(markdown)
+}
+
+struct TempWorkDir {
+    path: PathBuf,
+}
+
+impl TempWorkDir {
+    fn create() -> Result<Self, ApiError> {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("anydoc-rag-{}-{nonce}", std::process::id()));
+        std::fs::create_dir(&path).map_err(|error| {
+            ApiError::ocr_failed(format!("cannot create temp directory: {error}"))
+        })?;
+        Ok(Self { path })
+    }
+}
+
+impl Drop for TempWorkDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
 }
 
 fn build_rag_payload(
@@ -562,6 +715,18 @@ impl ApiError {
         }
     }
 
+    fn payload_too_large(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::PAYLOAD_TOO_LARGE,
+            code: "payloadTooLarge",
+            message: message.into(),
+        }
+    }
+
+    fn ocr_failed(message: impl Into<String>) -> Self {
+        Self::unprocessable("ocrFailed", message)
+    }
+
     fn convert(error: anydoc::ConvertError) -> Self {
         let status = match &error {
             anydoc::ConvertError::NeedsOcr { .. } => StatusCode::UNPROCESSABLE_ENTITY,
@@ -584,5 +749,48 @@ impl IntoResponse for ApiError {
             "code": self.code
         }));
         (self.status, body).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn ocr_command_reads_markdown_from_stdout() {
+        let markdown = execute_ocr_command(
+            b"fixture",
+            "scan.pdf",
+            "/bin/sh -c 'printf \"# OCR stdout\"' ignored {input}",
+            5,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(markdown, "# OCR stdout");
+    }
+
+    #[tokio::test]
+    async fn ocr_command_reads_markdown_from_output_placeholder() {
+        let markdown = execute_ocr_command(
+            b"fixture",
+            "scan.pdf",
+            "/bin/sh -c 'printf \"# OCR file\" > \"$2\"' ignored {input} {output}",
+            5,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(markdown, "# OCR file");
+    }
+
+    #[tokio::test]
+    async fn ocr_command_requires_input_placeholder() {
+        let error = execute_ocr_command(b"fixture", "scan.pdf", "/bin/echo missing", 5)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.code, "ocrFailed");
+        assert!(error.message.contains("{input}"));
     }
 }

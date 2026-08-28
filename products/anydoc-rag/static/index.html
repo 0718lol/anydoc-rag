@@ -3,95 +3,145 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AnyDoc RAG</title>
+    <meta name="theme-color" content="#f4f5f7" />
+    <title>AnyDoc RAG - 文档解析工作台</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">AnyDoc</p>
-          <h1>RAG</h1>
-        </div>
-        <div class="runtime" id="runtime">正在读取运行状态</div>
-      </header>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="AnyDoc RAG 首页">
+        <span class="brand-mark">A</span>
+        <span><strong>AnyDoc RAG</strong><small>文档解析工作台</small></span>
+      </a>
+      <div class="runtime" id="runtime" aria-live="polite">
+        <span class="status-dot checking"></span>
+        <span>正在检测解析服务</span>
+      </div>
+    </header>
 
-      <section class="workspace">
-        <section class="panel upload-panel">
-          <div class="panel-head">
-            <div>
-              <p class="label">上传</p>
-              <h2>文档输入</h2>
-            </div>
-            <button type="button" class="ghost" id="resetBtn">重置</button>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <nav class="side-nav" aria-label="工作区导航">
+          <button type="button" class="nav-item active" data-section="tasks">
+            <span class="nav-icon">⇄</span><span>转换任务</span><span class="nav-count" id="taskCount">0</span>
+          </button>
+          <button type="button" class="nav-item" data-section="history">
+            <span class="nav-icon">◷</span><span>最近记录</span><span class="nav-count" id="historyCount">0</span>
+          </button>
+        </nav>
+
+        <div class="capability-block">
+          <p class="section-label">能力状态</p>
+          <div class="capability-row"><span>本地解析</span><span class="cap-badge ready">可用</span></div>
+          <div class="capability-row"><span>本地 OCR</span><span class="cap-badge" id="ocrCapability">检测中</span></div>
+          <div class="capability-row"><span>数据传输</span><span class="cap-badge private">仅本机</span></div>
+        </div>
+      </aside>
+
+      <section class="main-area">
+        <div class="page-heading">
+          <div>
+            <p class="section-label">WORKBENCH</p>
+            <h1>转换任务</h1>
+            <p>批量提取文档内容，生成 Markdown 或可直接入库的 RAG JSON。</p>
+          </div>
+          <button type="button" class="secondary-btn" id="clearCompletedBtn">清除已完成</button>
+        </div>
+
+        <section class="task-layout" id="tasksSection">
+          <div class="control-column">
+            <form id="convertForm" class="upload-form">
+              <label class="dropzone" id="dropzone">
+                <input type="file" id="file" name="file" multiple hidden />
+                <span class="upload-icon">＋</span>
+                <strong>拖入文档，或点击选择</strong>
+                <span>支持 DOCX、PDF、PPTX、XLSX、EPUB、RTF、ODT、CSV 等格式</span>
+              </label>
+
+              <div class="settings-grid">
+                <label class="field">
+                  <span>输出格式</span>
+                  <select name="mode" id="mode">
+                    <option value="rag">RAG JSON</option>
+                    <option value="markdown">Markdown</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>OCR 策略</span>
+                  <select name="ocr" id="ocr">
+                    <option value="reject">仅提取文本</option>
+                    <option value="local" disabled>本地命令（未配置）</option>
+                    <option value="paddleocr" disabled>PaddleOCR（未配置）</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>分块字符数</span>
+                  <input type="number" name="max_chars" id="maxChars" min="200" step="100" value="2000" />
+                </label>
+                <label class="field">
+                  <span>重叠字符数</span>
+                  <input type="number" name="overlap" id="overlap" min="0" step="50" value="200" />
+                </label>
+              </div>
+
+              <button type="submit" class="primary-btn" id="runBtn" disabled>
+                <span id="runBtnText">开始转换</span><span class="button-count" id="selectedCount">0</span>
+              </button>
+            </form>
+
+            <section class="queue-section" aria-labelledby="queueTitle">
+              <div class="section-head">
+                <h2 id="queueTitle">任务队列</h2>
+                <span id="queueSummary">等待添加文档</span>
+              </div>
+              <div class="queue-list" id="queueList">
+                <div class="empty-queue"><span>□</span><p>添加文档后会在这里显示处理进度</p></div>
+              </div>
+            </section>
           </div>
 
-          <form id="convertForm" class="form">
-            <label class="dropzone" id="dropzone">
-              <input type="file" id="file" name="file" hidden />
-              <strong id="fileLabel">选择或拖入文档</strong>
-              <span id="fileHint">docx, pdf, pptx, xlsx, epub, csv</span>
-            </label>
-
-            <div class="field-row">
-              <label>
-                <span>输出</span>
-                <select name="mode" id="mode">
-                  <option value="rag">RAG JSON</option>
-                  <option value="markdown">Markdown</option>
-                </select>
-              </label>
-              <label>
-                <span>OCR</span>
-                <select name="ocr" id="ocr">
-                  <option value="reject">Reject</option>
-                  <option value="hosted">Hosted</option>
-                  <option value="local">Local</option>
-                  <option value="paddleocr">PaddleOCR</option>
-                </select>
-              </label>
+          <section class="result-panel" aria-labelledby="resultTitle">
+            <div class="result-head">
+              <div>
+                <p class="section-label">RESULT</p>
+                <h2 id="resultTitle">解析结果</h2>
+              </div>
+              <div class="result-actions">
+                <button type="button" class="icon-btn" id="copyBtn" title="复制结果" aria-label="复制结果" disabled>⧉</button>
+                <button type="button" class="icon-btn" id="downloadBtn" title="下载结果" aria-label="下载结果" disabled>↓</button>
+              </div>
             </div>
 
-            <div class="field-row">
-              <label>
-                <span>Chunk</span>
-                <input type="number" name="max_chars" id="maxChars" min="200" step="100" value="2000" />
-              </label>
-              <label>
-                <span>Overlap</span>
-                <input type="number" name="overlap" id="overlap" min="0" step="50" value="200" />
-              </label>
+            <div class="result-tabs" role="tablist">
+              <button type="button" role="tab" data-view="rag" id="ragTab" class="active">RAG JSON</button>
+              <button type="button" role="tab" data-view="markdown" id="markdownTab">Markdown</button>
             </div>
 
-            <div class="actions">
-              <button type="submit" class="primary" id="runBtn">转换</button>
-              <div class="meta" id="sourceMeta">未选择文件</div>
+            <div class="result-body" id="resultBody">
+              <div class="result-empty" id="resultEmpty">
+                <span class="empty-glyph">{ }</span>
+                <h3>尚无解析结果</h3>
+                <p>选择一个或多个文档开始转换，完成后可在任务队列中切换查看。</p>
+              </div>
+              <div class="result-content" id="resultContent" hidden>
+                <div class="metrics" id="summary"></div>
+                <pre class="output" id="output"></pre>
+              </div>
             </div>
-          </form>
-
-          <div class="status" id="status">等待输入</div>
+          </section>
         </section>
 
-        <section class="panel output-panel">
-          <div class="panel-head">
-            <div>
-              <p class="label">输出</p>
-              <h2>结果</h2>
-            </div>
-            <div class="toolbar">
-              <button type="button" class="ghost" data-view="markdown" id="markdownTab">Markdown</button>
-              <button type="button" class="ghost active" data-view="rag" id="ragTab">RAG JSON</button>
-              <button type="button" class="ghost" id="copyBtn">复制</button>
-              <button type="button" class="ghost" id="downloadBtn">下载</button>
-            </div>
+        <section class="history-section" id="historySection" hidden>
+          <div class="history-head">
+            <div><h2>最近记录</h2><p>结果保存在当前浏览器中，最多保留 12 条。</p></div>
+            <button type="button" class="danger-text" id="clearHistoryBtn">清空记录</button>
           </div>
-
-          <div class="summary" id="summary"></div>
-          <pre class="output" id="output">上传文件后，结果会显示在这里。</pre>
+          <div class="history-list" id="historyList"></div>
         </section>
       </section>
     </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="/app.js"></script>
   </body>
 </html>
-
