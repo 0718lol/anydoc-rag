@@ -1,4 +1,3 @@
 name = "AnyDoc RAG"
-start = "cargo run --release"
+start = "exec ./target/release/anydoc-rag"
 health = "/"
-

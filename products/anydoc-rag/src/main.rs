@@ -223,6 +223,12 @@ async fn convert(mut multipart: Multipart) -> Result<Json<ConvertResponse>, ApiE
         .or_else(|| anydoc::Format::from_path(Path::new(&input.file_name)));
 
     let markdown = anydoc::to_markdown_bytes(&input.bytes, format).map_err(ApiError::convert)?;
+    if markdown.trim().is_empty() {
+        return Err(ApiError::unprocessable(
+            "noExtractableText",
+            "the document contains no extractable text",
+        ));
+    }
 
     let rag = if input.mode == "rag" {
         Some(build_rag_payload(
@@ -524,7 +530,7 @@ fn format_name(format: anydoc::Format) -> String {
         anydoc::Format::Pptx => "pptx",
         anydoc::Format::Rtf => "rtf",
         anydoc::Format::Epub => "epub",
-        anydoc::Format::Excel => "xlsx",
+        anydoc::Format::Excel => "excel",
         anydoc::Format::Ods => "ods",
         anydoc::Format::Odp => "odp",
         anydoc::Format::Csv => "csv",
@@ -544,6 +550,14 @@ impl ApiError {
         Self {
             status: StatusCode::BAD_REQUEST,
             code: "badRequest",
+            message: message.into(),
+        }
+    }
+
+    fn unprocessable(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+            code,
             message: message.into(),
         }
     }
