@@ -1,0 +1,12 @@
+[package]
+name = "anydoc-rag"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anydoc = { path = "../../anydoc" }
+axum = { version = "0.8", features = ["multipart"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

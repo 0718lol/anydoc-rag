@@ -1,0 +1,4 @@
+name = "AnyDoc RAG"
+start = "cargo run --release"
+health = "/"
+

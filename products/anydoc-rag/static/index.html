@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AnyDoc RAG</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">AnyDoc</p>
+          <h1>RAG</h1>
+        </div>
+        <div class="runtime" id="runtime">正在读取运行状态</div>
+      </header>
+
+      <section class="workspace">
+        <section class="panel upload-panel">
+          <div class="panel-head">
+            <div>
+              <p class="label">上传</p>
+              <h2>文档输入</h2>
+            </div>
+            <button type="button" class="ghost" id="resetBtn">重置</button>
+          </div>
+
+          <form id="convertForm" class="form">
+            <label class="dropzone" id="dropzone">
+              <input type="file" id="file" name="file" hidden />
+              <strong id="fileLabel">选择或拖入文档</strong>
+              <span id="fileHint">docx, pdf, pptx, xlsx, epub, csv</span>
+            </label>
+
+            <div class="field-row">
+              <label>
+                <span>输出</span>
+                <select name="mode" id="mode">
+                  <option value="rag">RAG JSON</option>
+                  <option value="markdown">Markdown</option>
+                </select>
+              </label>
+              <label>
+                <span>OCR</span>
+                <select name="ocr" id="ocr">
+                  <option value="reject">Reject</option>
+                  <option value="hosted">Hosted</option>
+                  <option value="local">Local</option>
+                  <option value="paddleocr">PaddleOCR</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="field-row">
+              <label>
+                <span>Chunk</span>
+                <input type="number" name="max_chars" id="maxChars" min="200" step="100" value="2000" />
+              </label>
+              <label>
+                <span>Overlap</span>
+                <input type="number" name="overlap" id="overlap" min="0" step="50" value="200" />
+              </label>
+            </div>
+
+            <div class="actions">
+              <button type="submit" class="primary" id="runBtn">转换</button>
+              <div class="meta" id="sourceMeta">未选择文件</div>
+            </div>
+          </form>
+
+          <div class="status" id="status">等待输入</div>
+        </section>
+
+        <section class="panel output-panel">
+          <div class="panel-head">
+            <div>
+              <p class="label">输出</p>
+              <h2>结果</h2>
+            </div>
+            <div class="toolbar">
+              <button type="button" class="ghost" data-view="markdown" id="markdownTab">Markdown</button>
+              <button type="button" class="ghost active" data-view="rag" id="ragTab">RAG JSON</button>
+              <button type="button" class="ghost" id="copyBtn">复制</button>
+              <button type="button" class="ghost" id="downloadBtn">下载</button>
+            </div>
+          </div>
+
+          <div class="summary" id="summary"></div>
+          <pre class="output" id="output">上传文件后，结果会显示在这里。</pre>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
+
