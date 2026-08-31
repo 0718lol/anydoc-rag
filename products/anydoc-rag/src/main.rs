@@ -793,4 +793,34 @@ mod tests {
         assert_eq!(error.code, "ocrFailed");
         assert!(error.message.contains("{input}"));
     }
+
+    #[tokio::test]
+    async fn ocr_command_reports_timeout() {
+        let error = execute_ocr_command(
+            b"fixture",
+            "scan.pdf",
+            "/bin/sh -c 'sleep 5' ignored {input}",
+            1,
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.code, "ocrFailed");
+        assert!(error.message.contains("timed out after 1s"));
+    }
+
+    #[tokio::test]
+    async fn ocr_command_rejects_empty_output() {
+        let error = execute_ocr_command(
+            b"fixture",
+            "scan.pdf",
+            "/bin/sh -c 'exit 0' ignored {input}",
+            5,
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.code, "ocrFailed");
+        assert!(error.message.contains("empty Markdown"));
+    }
 }

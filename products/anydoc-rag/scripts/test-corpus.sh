@@ -37,7 +37,7 @@ failures=0
 passed=0
 printf '%-28s %-8s %-8s %s\n' 'sample' 'format' 'status' 'markdown chars'
 
-while IFS=$'\t' read -r id file_name expected_format expected source_url github_api_url; do
+while IFS=$'\t' read -r id file_name expected_format expected source_url github_api_url expected_text; do
   [[ -z "$id" || "$id" == \#* ]] && continue
   file="$corpus_dir/files/$file_name"
   response="$(mktemp)"
@@ -48,6 +48,7 @@ while IFS=$'\t' read -r id file_name expected_format expected source_url github_
 
   actual_format="$(jq -r '.format // ""' "$response" 2>/dev/null || true)"
   markdown_chars="$(jq -r '.markdown | length' "$response" 2>/dev/null || true)"
+  markdown="$(jq -r '.markdown // ""' "$response" 2>/dev/null || true)"
   chunks="$(jq -r '.rag.chunks | length' "$response" 2>/dev/null || true)"
   ok="$(jq -r '.ok // false' "$response" 2>/dev/null || true)"
 
@@ -56,7 +57,8 @@ while IFS=$'\t' read -r id file_name expected_format expected source_url github_
   if [[ "$expected" == "success" && "$status" == "200" && "$ok" == "true" \
         && "$actual_format" == "$expected_format" \
         && "$markdown_chars" =~ ^[0-9]+$ && "$markdown_chars" -gt 0 \
-        && "$chunks" =~ ^[0-9]+$ && "$chunks" -gt 0 ]]; then
+        && "$chunks" =~ ^[0-9]+$ && "$chunks" -gt 0 \
+        && -n "$expected_text" && "$markdown" == *"$expected_text"* ]]; then
     printf '%-28s %-8s %-8s %s\n' "$id" "$actual_format" 'PASS' "$markdown_chars"
     passed=$((passed + 1))
   elif [[ "$expected" != "success" && "$status" == "422" && "$error_code" == "$expected" ]]; then

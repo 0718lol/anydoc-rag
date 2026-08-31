@@ -85,3 +85,5 @@ NODE_PATH=/usr/lib/node_modules TEST_BASE_URL=http://127.0.0.1:$PORT node script
 - PPTX 纯表格样本当前返回 `noExtractableText`
 - 最近记录保存在浏览器本地；超过约 350,000 字符的结果只保留元数据
 - 批量任务目前顺序执行，尚不支持暂停、取消或 ZIP 下载
+
+公开语料回归不仅检查 HTTP 状态、格式、非空输出和分块数量，也为每种成功格式检查稳定的关键文本；空表格样本保留明确的失败语义。

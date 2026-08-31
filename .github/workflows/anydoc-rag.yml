@@ -1,0 +1,31 @@
+name: AnyDoc RAG
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: anydoc-rag-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  product:
+    name: Product regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --manifest-path products/anydoc-rag/Cargo.toml --check
+      - run: cargo clippy --manifest-path products/anydoc-rag/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path products/anydoc-rag/Cargo.toml --locked
+      - run: cargo build --manifest-path products/anydoc-rag/Cargo.toml --release --locked
+      - run: products/anydoc-rag/scripts/test-corpus.sh
