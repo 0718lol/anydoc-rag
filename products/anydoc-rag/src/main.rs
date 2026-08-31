@@ -313,7 +313,7 @@ async fn execute_ocr_command(
     command_template: &str,
     timeout_seconds: u64,
 ) -> Result<String, ApiError> {
-    let parts = shell_words::split(&command_template).map_err(|error| {
+    let parts = shell_words::split(command_template).map_err(|error| {
         ApiError::unprocessable("ocrFailed", format!("invalid OCR command: {error}"))
     })?;
     if parts.is_empty() || !parts.iter().any(|part| part.contains("{input}")) {
@@ -420,9 +420,7 @@ fn build_rag_payload(
 ) -> Result<RagPayload, ApiError> {
     let document = match format {
         Some(anydoc::Format::Pdf) => None,
-        Some(format) => Some(
-            anydoc::to_document(bytes, format).map_err(|error| ApiError::convert(error.into()))?,
-        ),
+        Some(format) => Some(anydoc::to_document(bytes, format).map_err(ApiError::convert)?),
         None => None,
     };
 
