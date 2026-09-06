@@ -300,8 +300,8 @@ impl MathState {
     /// group that named no element is transparent.
     fn close_groups(&mut self, depth: usize) {
         while self.open.len() > 1 && self.open.last().is_some_and(|(d, _)| *d > depth) {
-            let (_, elem) = self.open.pop().unwrap();
-            let (_, parent) = self.open.last_mut().unwrap();
+            let Some((_, elem)) = self.open.pop() else { break };
+            let Some((_, parent)) = self.open.last_mut() else { break };
             if elem.local.is_empty() {
                 parent.children.extend(elem.children);
             } else {
@@ -502,8 +502,7 @@ impl Destinations {
     /// Close field frames opened deeper than `depth`, folding their results
     /// back into the inline stream.
     fn close_fields(&mut self, depth: usize, inlines: &mut Vec<Inline>) {
-        while self.fields.last().is_some_and(|f| f.depth > depth) {
-            let frame = self.fields.pop().unwrap();
+        while let Some(frame) = self.fields.pop_if(|f| f.depth > depth) {
             let start = frame.start.min(inlines.len());
             let content: Vec<Inline> = inlines.drain(start..).collect();
             inlines.extend(field_result(&frame.instr, content));
@@ -513,8 +512,7 @@ impl Destinations {
     /// Close note frames opened deeper than `depth`, replacing their content
     /// with a reference to the collected note.
     fn close_notes(&mut self, depth: usize, inlines: &mut Vec<Inline>) {
-        while self.note_frames.last().is_some_and(|f| f.depth > depth) {
-            let frame = self.note_frames.pop().unwrap();
+        while let Some(frame) = self.note_frames.pop_if(|f| f.depth > depth) {
             let start = frame.start.min(inlines.len());
             let content: Vec<Inline> = inlines.drain(start..).collect();
             if !inlines_are_empty(&content) {

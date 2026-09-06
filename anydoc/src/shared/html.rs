@@ -600,7 +600,9 @@ impl Builder<'_> {
                 }
                 current = Some(List { marker, start: number as u64, items: Vec::new() });
             }
-            current.as_mut().unwrap().items.push(item);
+            // `current` is either left over from the previous contiguous item
+            // or freshly created above.
+            current.as_mut().expect("current list exists by here").items.push(item);
             last_number = number;
         }
         if let Some(list) = current {

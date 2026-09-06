@@ -299,6 +299,9 @@ fn select(sections: &[Section], v: f64) -> Option<(&Section, f64, bool)> {
 
 /// Split a code on `;` outside quotes, brackets, and escapes.
 fn split_sections(code: &str) -> Option<Vec<String>> {
+    // `parts` always keeps at least one entry: it starts with one and `;`
+    // only ever appends. `expect` documents that invariant for every
+    // `last_mut` below.
     let mut parts = vec![String::new()];
     let mut chars = code.chars();
     while let Some(c) = chars.next() {
@@ -306,7 +309,7 @@ fn split_sections(code: &str) -> Option<Vec<String>> {
             ';' => parts.push(String::new()),
             '"' | '[' => {
                 let close = if c == '"' { '"' } else { ']' };
-                let part = parts.last_mut().unwrap();
+                let part = parts.last_mut().expect("parts always holds at least one section");
                 part.push(c);
                 loop {
                     let c = chars.next()?;
@@ -318,11 +321,11 @@ fn split_sections(code: &str) -> Option<Vec<String>> {
             }
             '\\' | '_' | '*' => {
                 let next = chars.next()?;
-                let part = parts.last_mut().unwrap();
+                let part = parts.last_mut().expect("parts always holds at least one section");
                 part.push(c);
                 part.push(next);
             }
-            c => parts.last_mut().unwrap().push(c),
+            c => parts.last_mut().expect("parts always holds at least one section").push(c),
         }
     }
     Some(parts)

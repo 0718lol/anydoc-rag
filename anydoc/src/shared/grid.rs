@@ -86,8 +86,7 @@ pub fn build_edge_table(rows: Vec<GridRow>) -> Result<Option<Block>, ConvertErro
             let mut merged_blocks = blocks;
             let mut right = prop.right;
             if prop.merge_first {
-                while cells.peek().is_some_and(|(_, p)| p.merge_cont) {
-                    let (b, p) = cells.next().unwrap();
+                while let Some((b, p)) = cells.next_if(|(_, p)| p.merge_cont) {
                     merged_blocks.extend(b);
                     right = p.right;
                 }

@@ -97,7 +97,10 @@ fn sniff_delimiter(text: &str) -> u8 {
         }
         // Frequency ties break toward the wider record shape so the choice
         // never depends on hash-map iteration order.
-        let (&modal, &freq) = tally.iter().max_by_key(|&(&count, &f)| (f, count)).unwrap();
+        let (&modal, &freq) = tally
+            .iter()
+            .max_by_key(|&(&count, &f)| (f, count))
+            .expect("counts is non-empty, so the tally holds at least one entry");
         if modal < 2 {
             continue; // a delimiter that never splits carries no signal
         }

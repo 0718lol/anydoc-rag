@@ -95,7 +95,8 @@ pub(crate) fn first_blip(data: &[u8], max_bytes: usize) -> Option<Blip<'_>> {
         };
         let body_start = cursor.checked_add(8)?;
         let body_end = body_start.checked_add(body.len())?;
-        stack.last_mut().unwrap().0 = body_end;
+        // `stack` is non-empty: the loop top above returns via `?` once it is.
+        stack.last_mut().expect("stack is non-empty here").0 = body_end;
         visited += 1;
         if visited > 10_000 || stack.len() > 16 {
             return None;

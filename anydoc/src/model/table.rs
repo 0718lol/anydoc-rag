@@ -248,7 +248,12 @@ impl GridBuilder {
                 while self.grid[row].len() < col {
                     self.grid[row].push(CellSlot::Origin(Cell::default()));
                 }
-                let (origin_row, origin_col) = self.pending.remove(&(row, col)).unwrap();
+                // The column list was snapshotted from `pending` before this
+                // loop, so every key is still present.
+                let (origin_row, origin_col) = self
+                    .pending
+                    .remove(&(row, col))
+                    .expect("pending slot exists: the key was snapshotted from pending");
                 // Placement always consumes pending slots at the cursor, so a
                 // still-pending position can only sit at or past the row end.
                 debug_assert_eq!(self.grid[row].len(), col);

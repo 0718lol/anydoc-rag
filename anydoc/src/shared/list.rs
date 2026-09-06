@@ -63,7 +63,7 @@ fn build_lists(entries: Vec<ListEntry>) -> Vec<Block> {
     let mut iter = entries.into_iter().peekable();
     while let Some(&ListEntry { level, key, number, .. }) = iter.peek() {
         if level <= min_lvl {
-            let entry = iter.next().unwrap();
+            let Some(entry) = iter.next() else { break };
             let split = match &current {
                 Some((_, cur_key, last_number)) => {
                     *cur_key != key
@@ -80,13 +80,15 @@ fn build_lists(entries: Vec<ListEntry>) -> Vec<Block> {
                 };
                 current = Some((list, key, number));
             }
-            let (list, _, last) = current.as_mut().unwrap();
+            let (list, _, last) = current
+                .as_mut()
+                .expect("current list exists: it is set above whenever a new run starts");
             list.items.push(ListItem { blocks: entry.blocks, marker_label: entry.label });
             *last = number;
         } else {
             let mut sub = Vec::new();
-            while iter.peek().is_some_and(|e| e.level > min_lvl) {
-                sub.push(iter.next().unwrap());
+            while let Some(entry) = iter.next_if(|e| e.level > min_lvl) {
+                sub.push(entry);
             }
             let sublists = build_lists(sub);
             if sublists.is_empty() {
@@ -102,11 +104,16 @@ fn build_lists(entries: Vec<ListEntry>) -> Vec<Block> {
                     0,
                 ));
             }
-            let (list, _, _) = current.as_mut().unwrap();
+            let (list, _, _) =
+                current.as_mut().expect("current list exists: it was created above when missing");
             if list.items.is_empty() {
                 list.items.push(ListItem::default());
             }
-            list.items.last_mut().unwrap().blocks.extend(sublists);
+            list.items
+                .last_mut()
+                .expect("an item exists: a default was pushed above when the list was empty")
+                .blocks
+                .extend(sublists);
         }
     }
     flush_current(&mut current, &mut out);
