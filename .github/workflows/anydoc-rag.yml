@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1" # 每周一 03:00 UTC 跑一次 fuzz 冒烟
 
 permissions:
   contents: read
@@ -29,3 +31,37 @@ jobs:
       - run: cargo test --manifest-path products/anydoc-rag/Cargo.toml --locked
       - run: cargo build --manifest-path products/anydoc-rag/Cargo.toml --release --locked
       - run: products/anydoc-rag/scripts/test-corpus.sh
+
+  library:
+    name: Library tests (anydoc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: anydoc
+      - run: cargo test --manifest-path anydoc/Cargo.toml --locked
+      - run: cargo test --manifest-path anydoc/Cargo.toml --locked --release
+
+  fuzz-smoke:
+    name: Fuzz smoke
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: anydoc
+      - run: cargo install cargo-fuzz --locked
+      - name: Smoke each target for 60s
+        working-directory: anydoc
+        run: |
+          for target in xlsx xls xlsb numfmt; do
+            cargo fuzz run "$target" "fuzz/seeds/$target" -- -max_total_time=60
+          done
