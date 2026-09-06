@@ -20,12 +20,12 @@ jobs:
     name: Product regression
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.8.0
       - run: cargo fmt --manifest-path products/anydoc-rag/Cargo.toml --check
       - run: cargo clippy --manifest-path products/anydoc-rag/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path products/anydoc-rag/Cargo.toml --locked
@@ -36,11 +36,11 @@ jobs:
     name: Library tests (anydoc)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.8.0
         with:
           workspaces: anydoc
       - run: cargo test --manifest-path anydoc/Cargo.toml --locked
@@ -51,11 +51,11 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.8.0
         with:
           workspaces: anydoc
       - run: cargo install cargo-fuzz --locked
